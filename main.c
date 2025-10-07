@@ -8,6 +8,7 @@ int main(void) {
 
     char* s1 = substr_utf8(text, 1, 2);   // "안녕"
     char* s2 = substr_utf8(text, -6, 5);  // "Hello"
+    char* s4 = substr_utf8(text, -6, 5);  // "Hello"    
 
     printf("[등록 후 개수] %d\n", resource_count());
 
