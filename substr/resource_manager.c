@@ -1,3 +1,13 @@
+/*
+ * resource_manager.c
+ * - 단순 리소스(메모리) 등록/해제 관리 구현
+ *
+ * 동작:
+ * - `register_resource`로 등록된 포인터는 내부 배열에 저장되고, 프로그램 종료 시 atexit 훅으로 전부 해제됩니다.
+ * - `unregister_resource`는 특정 포인터를 찾아 free 하고 목록에서 제거합니다.
+ * - 스레드 안전을 위해 mutex를 사용합니다.
+ */
+
 #include "resource_manager.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -10,6 +20,7 @@ static int resource_count_ = 0;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int initialized = 0;
 
+/* 모든 등록된 리소스를 해제하고 카운트를 초기화합니다. atexit로 호출됩니다. */
 static void cleanup_all(void) {
     pthread_mutex_lock(&lock);
     for (int i = 0; i < resource_count_; i++) {
@@ -25,6 +36,7 @@ void register_resource(void* ptr) {
     if (!ptr) return;
     pthread_mutex_lock(&lock);
     if (!initialized) {
+        /* 프로그램 종료 시 cleanup_all이 호출되도록 등록 */
         atexit(cleanup_all);
         initialized = 1;
     }
@@ -35,6 +47,7 @@ void register_resource(void* ptr) {
     pthread_mutex_unlock(&lock);
 }
 
+/* 등록된 포인터를 찾아 free하고 목록에서 제거합니다. */
 void unregister_resource(void* ptr) {
     if (!ptr) return;
     pthread_mutex_lock(&lock);
@@ -50,6 +63,7 @@ void unregister_resource(void* ptr) {
     pthread_mutex_unlock(&lock);
 }
 
+/* realloc 후 내부 배열에서 포인터를 갱신합니다. */
 void* realloc_resource(void* old_ptr, size_t new_size) {
     if (!old_ptr || new_size == 0) return NULL;
     pthread_mutex_lock(&lock);

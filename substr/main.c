@@ -1,3 +1,9 @@
+/*
+ * main.c
+ * 예제 실행 파일
+ * - UTF-8 / MS949 가정의 문자열에서 부분 문자열을 추출하여 출력합니다.
+ */
+
 #include <stdio.h>
 #include "substr.h"
 
