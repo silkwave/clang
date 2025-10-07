@@ -2,20 +2,17 @@
 *.o
 *.out
 *.exe
-*.obj
-*.a
-*.so
 
 # IDE / 에디터 관련
 *.swp
 *.swo
-*.vscode/
+.vscode/
 .idea/
-*.log
 
 # OS 관련
 .DS_Store
 Thumbs.db
 
-# 백업 파일
+# 로그 / 임시 파일
+*.log
 *~
