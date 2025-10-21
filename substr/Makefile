@@ -1,17 +1,28 @@
-# 이 Makefile은 substr 예제 빌드를 위한 설정입니다.
-# - main, substr, resource_manager 소스 파일을 컴파일하여 `utf8test` 실행 파일을 생성합니다.
-CC = gcc
-CFLAGS = -Wall -O2
-OBJS = main.o substr.o resource_manager.o
-TARGET = utf8test
+# Compiler and flags
+CC = cc
+CFLAGS = -g -Wall -Wextra -pedantic
+LDFLAGS = -lpthread
 
+# Target executable
+TARGET = substr_test.exe
+
+# Source and object files
+SOURCES = main.c substr.c resource_manager.c
+OBJECTS = $(SOURCES:.c=.o)
+
+# Default rule: build the target
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS)
+# Rule to link the object files into the final executable
+$(TARGET): $(OBJECTS)
+	$(CC) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
 
+# Rule to compile a .c source file into a .o object file
 %.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
+# Rule to clean up build artifacts
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJECTS) $(TARGET)
+
+.PHONY: all clean

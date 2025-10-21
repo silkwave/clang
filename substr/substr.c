@@ -20,61 +20,107 @@
  * - UTF-8: 선행 바이트의 비트를 검사하여 1~4바이트를 판정
  * - MS949: ASCII(0x00-0x7F)는 1바이트, 그 외는 2바이트로 간주
  */
-static int char_len(const char* p, encoding_t enc) {
+static int char_len(const char *p, encoding_t enc)
+{
     unsigned char c = (unsigned char)*p;
-    if (enc == ENCODING_UTF8) {
-        if (c < 0x80) return 1;
-        else if ((c >> 5) == 0x6) return 2;
-        else if ((c >> 4) == 0xE) return 3;
-        else if ((c >> 3) == 0x1E) return 4;
+    if (enc == ENCODING_UTF8)
+    {
+        if (c < 0x80) // 0xxxxxxx
+            return 1;
+        // 110xxxxx 10xxxxxx
+        else if ((c & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80)
+            return 2;
+        // 1110xxxx 10xxxxxx 10xxxxxx
+        else if ((c & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80)
+            return 3;
+        // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+        else if ((c & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 && (p[3] & 0xC0) == 0x80)
+            return 4;
+
+        // 잘못된 바이트 시퀀스일 경우 1바이트 전진
         return 1;
-    } else { // MS949
+    }
+    else
+    { // MS949
         return (c < 0x80) ? 1 : 2;
     }
 }
 
-char* substr(const char* str, int start, int length, encoding_t enc) {
-    if (!str) return NULL;
+char *substr(const char *str, int start, int length, encoding_t enc)
+{
+    if (!str)
+        return NULL; // 입력 문자열이 NULL이면 NULL 반환
 
-    int total_chars = 0;
-    const char* p = str;
-    while (*p) {
-        total_chars++;
+    if (length < 0)  // 길이가 음수이면 처리 불가
+        return NULL; // 추출할 길이가 음수이면 처리 불가, NULL 반환
+
+    const char *p = str;
+    const char *start_ptr = NULL;
+    const char *end_ptr = NULL;
+    int current_char_index = 0;
+
+    // 1-based to 0-based index
+    // 사용자가 입력한 1-기반 인덱스를 0-기반으로 변환
+    if (start > 0)
+    {
+        start--;
+    }
+    else if (start < 0) // 음수 인덱스 처리 (문자열 끝에서부터의 위치)
+    {
+        // 음수 인덱스를 계산하려면 먼저 전체 문자 수를 세어야 함
+        int total_chars = 0;
+        const char *temp = str;
+        while (*temp)
+        {
+            total_chars++;
+            temp += char_len(temp, enc);
+        }
+        start = total_chars + start; // 끝에서부터의 위치를 0-기반 인덱스로 변환
+    }
+
+    if (start < 0)
+        return NULL; // 인덱스 조정 후에도 음수이면 범위를 벗어난 것이므로 NULL 반환
+
+    // 문자열을 한 번만 순회하여 시작 포인터와 끝 포인터를 찾음
+    while (*p)
+    {
+        if (current_char_index == start)
+        {
+            start_ptr = p;
+        }
+        if (length > 0 && current_char_index == start + length)
+        {
+            end_ptr = p; // 끝 위치의 포인터 저장
+        }
         p += char_len(p, enc);
+        current_char_index++;
     }
 
-    /*
-     * 사용자 친화적 인덱스 처리
-     * - start > 0 : 1 기반 인덱스(사용자 입력 가정)을 0 기반으로 변환
-     * - start < 0 : 끝에서부터의 오프셋 지원
-     */
-    if (start > 0) start -= 1;
-    else if (start < 0) start = total_chars + start;
+    if (!start_ptr)
+        return NULL; // 시작 포인터를 찾지 못했다면 시작 인덱스가 범위를 벗어난 것
 
-    if (start < 0 || start >= total_chars) return NULL;
-    if (length <= 0 || start + length > total_chars)
-        length = total_chars - start;
-
-    p = str;
-    int idx = 0;
-    while (idx < start) {
-        p += char_len(p, enc);
-        idx++;
+    // 끝 포인터를 찾지 못한 경우 처리
+    if (!end_ptr)
+    {
+        if (length == 0)
+        {
+            end_ptr = start_ptr; // 길이가 0이면 시작과 끝 포인터가 같음 (빈 문자열)
+        }
+        else
+        {
+            // 길이가 문자열 끝을 넘어가면, 문자열의 끝(\0)을 끝 포인터로 설정
+            end_ptr = p;
+        }
     }
 
-    const char* q = p;
-    idx = 0;
-    while (idx < length && *q) {
-        q += char_len(q, enc);
-        idx++;
-    }
+    // 시작과 끝 포인터의 차이로 필요한 바이트 길이 계산
+    int byte_len = end_ptr - start_ptr;
+    char *result = malloc(byte_len + 1); // 바이트 길이 + 널 종료 문자를 위한 공간 할당
+    if (!result)
+        return NULL;
 
-    int byte_len = q - p;
-    char* result = malloc(byte_len + 1);
-    if (!result) return NULL;
-
-    memcpy(result, p, byte_len);
-    result[byte_len] = '\0';
+    memcpy(result, start_ptr, byte_len); // 계산된 바이트만큼 메모리 복사
+    result[byte_len] = '\0';             // 문자열의 끝에 널 종료 문자 추가
 
     /* 할당된 문자열을 리소스 매니저에 등록하여 프로그램 종료 시 자동 해제 */
     register_resource(result);
