@@ -43,6 +43,9 @@ static void run_all_tests(void)
     unregister_resource(u1);
     u1 = NULL; // 이중 해제를 방지하기 위해 포인터를 NULL로 설정합니다.
 
+    char *m2 = substr(ms949_text, 1, 5, ENCODING_MS949);
+    m2 = substr(ms949_text, 1, 5, ENCODING_MS949);
+
     // 테스트에 사용된 모든 리소스를 정리합니다.
     printf("\n--- Cleaning up test resources ---\n");
     cleanup_resources();
