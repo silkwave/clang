@@ -44,16 +44,27 @@ static void run_all_tests(void)
     u1 = NULL; // 이중 해제를 방지하기 위해 포인터를 NULL로 설정합니다.
 
     char *m2 = substr(ms949_text, 1, 5, ENCODING_MS949);
+
+    unregister_resource(m2);
+
     m2 = substr(ms949_text, 1, 5, ENCODING_MS949);
 
     // 테스트에 사용된 모든 리소스를 정리합니다.
-    printf("\n--- Cleaning up test resources ---\n");
+    printf("\n--- Cleaning up test resources ---start \n");
     cleanup_resources();
+    printf("\n--- Cleaning up test resources ---end \n");
 }
 
 /* 프로그램의 메인 진입점 */
 int main(void)
 {
     run_all_tests(); // 모든 테스트를 실행합니다.
+
+    printf("\n--- run_all_tests ---end \n");
+
+    const char *ms949_text = "안녕하세요 Hello World!"; // MS949 인코딩 가정
+
+    char *m2 = substr(ms949_text, 1, 5, ENCODING_MS949);
+
     return 0;
 }

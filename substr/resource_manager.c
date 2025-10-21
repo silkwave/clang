@@ -1,11 +1,11 @@
 /*
  * resource_manager.c
- * - 단순 리소스(메모리) 등록/해제 관리 구현
+ * - 스레드별 리소스(메모리) 등록/해제 관리 구현
  *
  * 동작:
- * - `register_resource`로 등록된 포인터는 내부 배열에 저장되고, 프로그램 종료 시 atexit 훅으로 전부 해제됩니다.
+ * - `register_resource`로 등록된 포인터는 스레드별 내부 배열에 저장됩니다.
+ * - 주 스레드의 경우, 프로그램 종료 시 atexit 훅으로 리소스가 자동 해제됩니다.
  * - `unregister_resource`는 특정 포인터를 찾아 free 하고 목록에서 제거합니다.
- * - 스레드 안전을 위해 mutex를 사용합니다.
  */
 
 #include <stdlib.h>
@@ -42,8 +42,9 @@ void register_resource(void *ptr)
         return;
 
     /*
-     * atexit은 프로세스당 한 번만 등록하면 충분하지만, 스레드 안전을 위해
-     * 각 스레드에서 처음 호출 시 등록하도록 합니다. (중복 등록은 atexit이 처리)
+     * atexit(cleanup_all): 프로그램이 정상 종료될 때 cleanup_all 함수를 호출하도록 등록합니다.
+     * 이 핸들러는 주(main) 스레드의 리소스만 정리할 수 있습니다.
+     * (atexit은 동일 함수가 여러 번 등록되어도 실제로는 한 번만 등록됩니다.)
      */
     atexit(cleanup_all);
 
