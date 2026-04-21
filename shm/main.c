@@ -197,6 +197,40 @@ void do_exit(int sig)
     exit(0);
 }
 
+int update_task_halt_stat(int media_idx, int job_idx, char value)
+{
+    if (g_host_info_idx < 0 || g_host_info_idx >= MAX_HOST_INFO_CNT)
+        return -1;
+
+    if (media_idx < 0 || media_idx >= 50)
+        return -1;
+
+    if (job_idx < 0 || job_idx >= 50)
+        return -1;
+
+    /*
+     * value 의미:
+     * - '1': 장애(업무 중지)
+     * - '0' 또는 0x00: 정상
+     */
+    if (value == '1')
+        g_host_info_shm[g_host_info_idx].TaskHaltStat[media_idx][job_idx] = '1';
+    else if (value == '0' || value == 0x00)
+        g_host_info_shm[g_host_info_idx].TaskHaltStat[media_idx][job_idx] = '0';
+    else
+        return -1;
+
+    return 0;
+}
+
+void update_task_halt_stat_jobs(int media_idx, const int *jobs, int job_count, char value)
+{
+    int i;
+
+    for (i = 0; i < job_count; i++)
+        (void)update_task_halt_stat(media_idx, jobs[i], value);
+}
+
 void print_task_halt_stat_all(void)
 {
     int i, j;
@@ -345,18 +379,22 @@ void setup_test_data(void)
 
     /* 샘플 장애 데이터(매체/업무 조합) */
     /* IC 자행카드(5): 현금지급(3), 출금이체(12), 통장정리(15) */
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[5][3]   = '1';
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[5][12]  = '1';
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[5][15]  = '1';
+    {
+        const int jobs[] = { 3, 12, 15 };
+        update_task_halt_stat_jobs(5, jobs, (int)(sizeof(jobs) / sizeof(jobs[0])), '1');
+    }
 
     /* RF 자행모바일(7): 잔액조회(0), 계좌이체(8) */
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[7][0]   = '1';
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[7][8]   = '1';
+    {
+        const int jobs[] = { 0, 8 };
+        update_task_halt_stat_jobs(7, jobs, (int)(sizeof(jobs) / sizeof(jobs[0])), '1');
+    }
 
     /* 통장 요구불(10): CMS집금(7), 입금이체(11), 삼행이체(14) */
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[10][7]  = '1';
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[10][11] = '1';
-    g_host_info_shm[g_host_info_idx].TaskHaltStat[10][14] = '1';
+    {
+        const int jobs[] = { 7, 11, 14 };
+        update_task_halt_stat_jobs(10, jobs, (int)(sizeof(jobs) / sizeof(jobs[0])), '1');
+    }
 
     /* 유량제어: 2번, 5번 */
     g_host_info_shm[g_host_info_idx].FlowCtl[2] = '1';
