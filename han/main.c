@@ -5,39 +5,39 @@
  * 고정 길이 필드에서 버퍼 경계로 한글이 절반만 잘렸을 경우,
  * 마지막 바이트를 공백(' ')으로 교체하여 깨진 문자를 방지한다.
  *
- * @param buf     처리할 문자열 버퍼 (NULL 불가)
- * @param len     버퍼의 유효 데이터 길이
- *                ※ 호출자는 buf[len]까지 쓸 수 있도록 len+1 이상 확보할 것
+ * @param buffer  처리할 문자열 버퍼 (NULL 불가)
+ * @param data_len 버퍼의 유효 데이터 길이
+ *                ※ 호출자는 buffer[data_len]까지 쓸 수 있도록 data_len+1 이상 확보할 것
  */
 #include <string.h>
 
-void libcmn_KSCLR(char *buf, int len)
+void libcmn_KSCLR(char *buffer, int data_len)
 {
-    int i;
-    int high_bit_count = 0;  /* MSB=1 인 바이트 수 (EUC-KR 한글 바이트 카운트) */
+    int idx;
+    int highBitCount = 0;  /* MSB=1 인 바이트 수 (EUC-KR 한글 바이트 카운트) */
 
     /* 방어 코드 */
-    if (buf == NULL || len <= 0) {
+    if (buffer == NULL || data_len <= 0) {
         return;
     }
 
     /* MSB(0x80)가 세트된 바이트 수를 센다.
      * EUC-KR 한글은 선행/후행 바이트 모두 MSB=1 이므로,
      * 이 카운트가 홀수면 마지막 한글이 1바이트 잘린 것이다. */
-    for (i = 0; i < len; i++) {
-        if ((unsigned char)buf[i] & 0x80) {
-            high_bit_count++;
+    for (idx = 0; idx < data_len; idx++) {
+        if ((unsigned char)buffer[idx] & 0x80) {
+            highBitCount++;
         }
     }
 
     /* 홀수 → 마지막 바이트가 잘린 한글의 선행 바이트
      * 공백으로 덮어써서 깨진 문자 방지 */
-    if (high_bit_count % 2 != 0) {
-        buf[len - 1] = ' ';
+    if (highBitCount % 2 != 0) {
+        buffer[data_len - 1] = ' ';
     }
 
     /* NULL 종료 (호출자가 buf[len] 공간을 보장해야 함) */
-    buf[len] = '\0';
+    buffer[data_len] = '\0';
 }
 
 
@@ -65,21 +65,21 @@ void libcmn_KSCLR(char *buf, int len)
  * 반환값: 출력한 바이트 수
  * ------------------------------------------------------------ */
 static int convert_special(unsigned char trail,
-                            unsigned char *pc_Outbuf,
-                            int           *pi_OutIdx)
+                           unsigned char *output,
+                           int           *output_idx)
 {
     switch (trail) {
         case TRAIL_SPACE:                           /* 전각 공백  */
-            pc_Outbuf[(*pi_OutIdx)++] = 0x20;
+            output[(*output_idx)++] = 0x20;
             return 1;
 
         case TRAIL_TILDE:                           /* 전각 물결표 */
-            pc_Outbuf[(*pi_OutIdx)++] = 0x7e;
+            output[(*output_idx)++] = 0x7e;
             return 1;
 
         default:                                    /* 변환 불가 → 원형 유지 */
-            pc_Outbuf[(*pi_OutIdx)++] = LEAD_SPECIAL;
-            pc_Outbuf[(*pi_OutIdx)++] = trail;
+            output[(*output_idx)++] = LEAD_SPECIAL;
+            output[(*output_idx)++] = trail;
             return 2;
     }
 }
@@ -87,47 +87,47 @@ static int convert_special(unsigned char trail,
 
 /* ------------------------------------------------------------
  * libcmn_KSALPHA
- *   pc_Inbuf  : 입력 EUC-KR 바이트 버퍼
- *   pi_ILen   : 처리할 입력 길이
- *   rc_Outbuf : 출력 버퍼 (호출자가 pi_ILen 이상 확보)
+ *   input     : 입력 EUC-KR 바이트 버퍼
+ *   input_len : 처리할 입력 길이
+ *   output    : 출력 버퍼 (호출자가 input_len 이상 확보)
  * ------------------------------------------------------------ */
-void libcmn_KSALPHA(unsigned char *pc_Inbuf,
-                    int            pi_ILen,
-                    unsigned char *rc_Outbuf)
+void libcmn_KSALPHA(unsigned char *input,
+                    int            input_len,
+                    unsigned char *output)
 {
-    int           i      = 0;
-    int           outIdx = 0;
-    unsigned char c;
+    int           input_idx  = 0;
+    int           output_idx = 0;
+    unsigned char byte;
     unsigned char trail;
 
     /* 출력버퍼 공백 초기화 */
-    memset(rc_Outbuf, 0x20, pi_ILen);
+    memset(output, 0x20, input_len);
 
-    while (i < pi_ILen) {
+    while (input_idx < input_len) {
 
-        c = pc_Inbuf[i++];
+        byte = input[input_idx++];
 
-        if (c >= 0xa0) {
+        if (byte >= 0xa0) {
             /* ── 한글 / 전각 영역 (2바이트) ──────────────── */
-            trail = pc_Inbuf[i++];
+            trail = input[input_idx++];
 
-            if (c == LEAD_ALPHA) {
+            if (byte == LEAD_ALPHA) {
                 /* ① 전각 영숫자 → 반각 1바이트 */
-                rc_Outbuf[outIdx++] = TO_HALF(trail);
+                output[output_idx++] = TO_HALF(trail);
 
-            } else if (c == LEAD_SPECIAL) {
+            } else if (byte == LEAD_SPECIAL) {
                 /* ② 전각 특수문자 → 개별 매핑 */
-                convert_special(trail, rc_Outbuf, &outIdx);
+                convert_special(trail, output, &output_idx);
 
             } else {
                 /* ③ 일반 한글 → 2바이트 원형 유지 */
-                rc_Outbuf[outIdx++] = c;
-                rc_Outbuf[outIdx++] = trail;
+                output[output_idx++] = byte;
+                output[output_idx++] = trail;
             }
 
         } else {
             /* ── ASCII 영역 → 1바이트 그대로 ─────────────── */
-            rc_Outbuf[outIdx++] = c;
+            output[output_idx++] = byte;
         }
     }
 }
@@ -196,4 +196,3 @@ int main(void)
 
     return 0;
 }
-
