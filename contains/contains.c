@@ -3,60 +3,64 @@
 #include <stdbool.h>
 
 /**
- * [함수] contains
- * 특정 문자열 배열 안에 찾고자 하는 대상 문자열이 존재하는지 검사합니다.
- * 
- * @param arr    : 검색 대상이 되는 문자열 포인터 배열 (가리키는 내용과 포인터 주소 모두 수정 불가)
- * @param size   : 배열에 담긴 요소의 개수
- * @param target : 찾으려는 대상 문자열
- * @return       : 찾았으면 true(참), 못 찾았거나 입력이 잘못되었으면 false(거짓) 반환
+ * 1. Java의 String.contains() 기능 구현 (부분 문자열 검색)
+ * @param haystack 검색 대상이 되는 전체 문자열
+ * @param needle 찾고자 하는 부분 문자열
+ * @return 포함되어 있으면 true, 아니면 false
  */
-bool contains(const char *const *arr, int size, const char *target) {
-    // 1. 방어 코드: 인자값이 NULL인 경우 예외 처리
-    if (arr == NULL || target == NULL) {
-        return false;
-    }
-
-    // 2. 배열의 크기만큼 루프를 돌며 하나씩 비교
-    for (int i = 0; i < size; i++) {
-        // 배열의 각 요소가 NULL이 아닌지 확인 후 문자열 비교 수행
-        if (arr[i] != NULL && strcmp(arr[i], target) == 0) {
-            return true; // 일치하는 항목을 찾으면 즉시 true 반환 (조기 종료)
-        }
-    }
-
-    // 3. 루프를 끝까지 돌았음에도 찾지 못한 경우
-    return false;
+bool contains(const char *haystack, const char *needle) {
+    if (haystack == NULL || needle == NULL) return false;
+    // 빈 문자열은 항상 포함된 것으로 간주 (Java 동작 방식)
+    if (*needle == '\0') return true;
+    
+    return strstr(haystack, needle) != NULL;
 }
 
 /**
- * [메인 함수]
- * 프로그램의 실행 시작점입니다.
+ * 2. Java의 List.contains() 기능 구현 (문자열 배열 내 요소 검색)
+ * @param list NULL로 끝나는 문자열 배열
+ * @param target 찾고자 하는 정확한 문자열
+ * @return 배열 내에 존재하면 true, 아니면 false
  */
-int main(int argc, char const *argv[]) {
-    // [설정] 차단 대상 기기 번호(MCN) 목록 정의
+bool list_contains(const char *list[], const char *target) {
+    if (list == NULL || target == NULL) return false;
+    
+    // 포인터를 사용하여 배열의 끝(NULL)까지 순회
+    for (const char **p = list; *p != NULL; p++) {
+        if (strcmp(*p, target) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int main() {
+    // 차단된 MCN 목록 (마지막에 NULL을 추가하여 크기 관리 없이 순회 가능)
     const char *blocked_mcns[] = {
         "051", "052", "053", "054", "055", 
-        "056", "057", "058", "059"
+        "056", "057", "058", "059", NULL
     };
 
-    // [계산] 배열의 전체 크기를 요소 하나의 크기로 나누어 개수(size) 산출
-    int size = sizeof(blocked_mcns) / sizeof(blocked_mcns[0]);
+    printf("=== Java 스타일 문자열 유틸리티 테스트 ===\n\n");
 
-    // [입력] 명령행 인자가 있으면 해당 값을 사용하고, 없으면 기본값 "060" 사용
-    // 예: ./contains 051
-    const char *target = (argc >= 2) ? argv[1] : "060";
-
-    printf("[로그] 검사 대상 기기 번호(MCN): %s\n", target);
-
-    // [실행] contains 함수를 호출하여 차단 목록에 포함되어 있는지 확인
-    if (contains(blocked_mcns, size, target)) {
-        // 차단 목록에 존재하는 경우
-        fprintf(stderr, "[결과] 에러: [%s]는 차단된 기기 번호입니다.\n", target);
-        return -1010; // 업무 규칙에 따른 오류 리턴 코드
+    // 예제 1: 배열 내 특정 요소 존재 확인 (list_contains)
+    const char *target = "059";
+    printf("[배열 검색] '%s'이(가) 차단 목록에 있는가?\n", target);
+    if (list_contains(blocked_mcns, target)) {
+        printf(" -> 결과: YES, 차단된 MCN입니다.\n\n");
+    } else {
+        printf(" -> 결과: NO, 허용된 MCN입니다.\n\n");
     }
 
-    // [종료] 차단되지 않은 경우 정상 메시지 출력 후 종료
-    puts("[결과] 정상: 통과되었습니다. (OK)");
-    return 0; // 성공 리턴 코드
+    // 예제 2: 문자열 내 부분 문자열 포함 확인 (contains)
+    const char *raw_data = "DEVICE_ID_054_SEOUL";
+    const char *check_val = "054";
+    printf("[부분 검색] '%s' 내에 '%s'이(가) 포함되어 있는가?\n", raw_data, check_val);
+    if (contains(raw_data, check_val)) {
+        printf(" -> 결과: YES, 포함되어 있습니다.\n");
+    } else {
+        printf(" -> 결과: NO, 포함되어 있지 않습니다.\n");
+    }
+
+    return 0;
 }
