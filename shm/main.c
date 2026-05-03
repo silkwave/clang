@@ -197,6 +197,13 @@ void do_exit(int sig)
     exit(0);
 }
 
+/*
+ * 특정 매체와 업무 조합의 장애 상태를 업데이트하는 함수
+ * @param media_idx 매체 인덱스 (0~49)
+ * @param job_idx   업무 인덱스 (0~49)
+ * @param value     설정할 값 ('1': 장애, '0' 또는 0x00: 정상)
+ * @return          성공 시 0, 인덱스 범위 초과나 잘못된 값 입력 시 -1
+ */
 int update_task_halt_stat(int media_idx, int job_idx, char value)
 {
     if (g_host_info_idx < 0 || g_host_info_idx >= MAX_HOST_INFO_CNT)
@@ -223,6 +230,13 @@ int update_task_halt_stat(int media_idx, int job_idx, char value)
     return 0;
 }
 
+/*
+ * 특정 매체에 대해 여러 업무의 장애 상태를 한꺼번에 업데이트하는 함수
+ * @param media_idx 매체 인덱스
+ * @param jobs      업무 인덱스 배열
+ * @param job_count 업데이트할 업무 개수
+ * @param value     설정할 값
+ */
 void update_task_halt_stat_jobs(int media_idx, const int *jobs, int job_count, char value)
 {
     int i;
@@ -231,23 +245,29 @@ void update_task_halt_stat_jobs(int media_idx, const int *jobs, int job_count, c
         (void)update_task_halt_stat(media_idx, jobs[i], value);
 }
 
+/*
+ * 모든 매체 및 업무의 장애 상태를 50x50 매트릭스 형태로 화면에 출력하는 함수
+ * '0': 정상, '1': 장애, 'X': 기타 정의되지 않은 값
+ */
 void print_task_halt_stat_all(void)
 {
     int i, j;
 
     if (g_host_info_idx < 0 || g_host_info_idx >= MAX_HOST_INFO_CNT)
     {
-        printf("[print_task_halt_stat_all] ERROR: host info index out of range (%d)\n", g_host_info_idx);
+        printf("[print_task_halt_stat_all] 오류: 호스트 정보 인덱스가 범위를 벗어남 (%d)\n", g_host_info_idx);
         return;
     }
 
     /* TaskHaltStat 전체값을 50x50 매트릭스로 출력(0/1/X 정규화) */
     cprintf("sky", "\n\n<<TaskHaltStat 전체값(0/1/X)>>\n");
     cprintf("white", "      ");
+    /* 상단 열 인덱스 출력 (십의 자리) */
     for (j = 0; j < 50; j++)
         printf("%d", (j / 10) % 10);
     printf("\n");
     cprintf("white", "      ");
+    /* 상단 열 인덱스 출력 (일의 자리) */
     for (j = 0; j < 50; j++)
         printf("%d", j % 10);
     printf("\n");
@@ -276,6 +296,7 @@ void print_task_halt_stat_all(void)
 
 /* ================================================================
  * [사진4] 317~453라인 - shm_all_view
+ * 공유메모리의 모든 정보를 보기 좋게 출력하는 함수
  * ================================================================ */
 
 void shm_all_view(void)
@@ -287,16 +308,15 @@ void shm_all_view(void)
 
     if (g_host_info_idx < 0 || g_host_info_idx >= MAX_HOST_INFO_CNT)
     {
-        printf("[shm_all_view] ERROR: host info index out of range (%d)\n", g_host_info_idx);
+        printf("[shm_all_view] 오류: 호스트 정보 인덱스가 범위를 벗어남 (%d)\n", g_host_info_idx);
         return;
     }
 
-    /* 운영에서는 설정에 따라 STD Log 출력 여부가 바뀜(예제에서는 OFF 고정) */
-    /* STD Log ON/OFF (405~411라인) */
+    /* 운영에서는 설정에 따라 표준 로그(STD Log) 출력 여부가 바뀜(예제에서는 OFF 고정) */
     if (std_log_on)
-        fprintf(stdout, "STD Log (ON)\t");
+        fprintf(stdout, "표준 로그 (사용 중)\t");
     else
-        cprintf("red", "STD Log (OFF)\t");
+        cprintf("red", "표준 로그 (미사용)\t");
 
     /*
      * TaskHaltStat[매체][업무] = '1' 이면 해당 조합이 장애 상태임을 의미.
@@ -358,6 +378,7 @@ void shm_all_view(void)
     else
         printf("(없음)\n");
 
+    /* 전체 매트릭스 출력 호출 */
     print_task_halt_stat_all();
 
     return;
@@ -417,25 +438,25 @@ void test_sub_CheckValue(void)
 
     memset(buf, 0x00, sizeof(buf));
     ret = sub_CheckValue(buf, sizeof(buf));
-    printf("[케이스1] 0x00 초기화    → %d %s\n", ret, ret==0?"OK":"FAIL");
+    printf("[케이스1] 0x00 초기화    → %d %s\n", ret, ret==0?"성공":"실패");
 
     memset(buf, 0x20, sizeof(buf));
     ret = sub_CheckValue(buf, sizeof(buf));
-    printf("[케이스2] 0x20 공백      → %d %s\n", ret, ret==0?"OK":"FAIL");
+    printf("[케이스2] 0x20 공백      → %d %s\n", ret, ret==0?"성공":"실패");
 
     memset(buf, 0x30, sizeof(buf));
     ret = sub_CheckValue(buf, sizeof(buf));
-    printf("[케이스3] 0x30 '0'       → %d %s\n", ret, ret==0?"OK":"FAIL");
+    printf("[케이스3] 0x30 '0'       → %d %s\n", ret, ret==0?"성공":"실패");
 
     memset(buf, 0x00, sizeof(buf));
     buf[3] = '1';
     ret = sub_CheckValue(buf, sizeof(buf));
-    printf("[케이스4] '1' 포함       → %d %s\n", ret, ret==1?"OK":"FAIL");
+    printf("[케이스4] '1' 포함       → %d %s\n", ret, ret==1?"성공":"실패");
 
     memset(buf, 0x00, sizeof(buf));
     buf[0] = '2';
     ret = sub_CheckValue(buf, sizeof(buf));
-    printf("[케이스5] '2' 포함(폐국) → %d %s\n", ret, ret==1?"OK":"FAIL");
+    printf("[케이스5] '2' 포함(폐국) → %d %s\n", ret, ret==1?"성공":"실패");
 }
 
 /* ================================================================
