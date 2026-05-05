@@ -1,0 +1,117 @@
+cells:
+  - kind: 2
+    value: >
+      DROP TABLE APC_SHM_ALL;
+
+
+      CREATE TABLE APC_SHM_ALL (
+        HOST_ID     NUMBER(2)      DEFAULT 0 NOT NULL,
+        ROW_KIND    CHAR(1)        NOT NULL,          -- 'M'(매체), 'S'(TaskHaltStat String)
+        KEY_IDX1    NUMBER(2)      NOT NULL,          -- M: media_idx, S: media_idx
+        KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- 고정 0
+        NAME_KR     VARCHAR2(64),                     -- 'M'에서만 사용(한글명)
+        VAL         VARCHAR2(50),                     -- 'S'에서 사용(50자리 상태 문자열)
+        UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL
+      );
+    languageId: oracle-sql
+  - kind: 2
+    value: >
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, NAME_KR,
+      VAL)
+
+      SELECT 0, 'M', media_idx, 0, media_name, NULL
+
+      FROM (
+        SELECT  0 media_idx, 'IS03 M/S 신용겸용' media_name FROM dual UNION ALL
+        SELECT  1, 'IS03 M/S 중앙카드' FROM dual UNION ALL
+        SELECT  2, 'IS03 M/S 조합카드' FROM dual UNION ALL
+        SELECT  3, 'IS03 M/S 가상계좌' FROM dual UNION ALL
+        SELECT  4, 'IS03 M/S 타행카드' FROM dual UNION ALL
+        SELECT  5, 'IC 자행카드' FROM dual UNION ALL
+        SELECT  6, 'IC 타행카드' FROM dual UNION ALL
+        SELECT  7, 'RF 자행모바일' FROM dual UNION ALL
+        SELECT  8, 'RF 타행모바일' FROM dual UNION ALL
+        SELECT  9, 'IRFM 모바일' FROM dual UNION ALL
+        SELECT 10, '통장 요구불' FROM dual UNION ALL
+        SELECT 11, '통장 신탁' FROM dual UNION ALL
+        SELECT 12, '통장 저축성' FROM dual UNION ALL
+        SELECT 13, '통장 수익증권' FROM dual UNION ALL
+        SELECT 14, '통장 공제' FROM dual UNION ALL
+        SELECT 15, '전자통장 요구불' FROM dual UNION ALL
+        SELECT 16, '전자통장 신탁' FROM dual UNION ALL
+        SELECT 17, '전자통장 저축성' FROM dual UNION ALL
+        SELECT 18, '전자통장 수익증권' FROM dual UNION ALL
+        SELECT 19, '전자화폐 자행' FROM dual UNION ALL
+        SELECT 20, '전자화폐 타행' FROM dual UNION ALL
+        SELECT 21, '무통장 요구불' FROM dual UNION ALL
+        SELECT 22, '무통장 신탁' FROM dual UNION ALL
+        SELECT 23, '무통장 저축성' FROM dual UNION ALL
+        SELECT 24, '무통장 수익증권' FROM dual UNION ALL
+        SELECT 25, 'IS02 M/S 자행' FROM dual UNION ALL
+        SELECT 26, 'IS02 M/S 타행' FROM dual UNION ALL
+        SELECT 27, 'IS02 M/S 타사' FROM dual UNION ALL
+        SELECT 28, 'IS02 M/S 해외' FROM dual UNION ALL
+        SELECT 29, 'IS02 EMV 자행' FROM dual UNION ALL
+        SELECT 30, 'IS02 EMV 타행' FROM dual UNION ALL
+        SELECT 31, 'IS02 EMV 타사' FROM dual UNION ALL
+        SELECT 32, '(미정)' FROM dual UNION ALL
+        SELECT 33, '(미정)' FROM dual UNION ALL
+        SELECT 34, '(미정)' FROM dual UNION ALL
+        SELECT 35, '(미정)' FROM dual UNION ALL
+        SELECT 36, '(미정)' FROM dual UNION ALL
+        SELECT 37, '(미정)' FROM dual UNION ALL
+        SELECT 38, '(미정)' FROM dual UNION ALL
+        SELECT 39, '(미정)' FROM dual UNION ALL
+        SELECT 40, '(미정)' FROM dual UNION ALL
+        SELECT 41, '(미정)' FROM dual UNION ALL
+        SELECT 42, '(미정)' FROM dual UNION ALL
+        SELECT 43, '(미정)' FROM dual UNION ALL
+        SELECT 44, '(미정)' FROM dual UNION ALL
+        SELECT 45, '(미정)' FROM dual UNION ALL
+        SELECT 46, '(미정)' FROM dual UNION ALL
+        SELECT 47, '(미정)' FROM dual UNION ALL
+        SELECT 48, '(미정)' FROM dual UNION ALL
+        SELECT 49, '(미정)' FROM dual
+      );
+    languageId: oracle-sql
+  - kind: 2
+    value: >
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
+
+      VALUES (0, 'S', 5, 0,
+      '00010000000010010000000000000000000000000000000000');
+
+
+      -- [07] RF 자행모바일: 0, 8번 장애
+
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
+
+      VALUES (0, 'S', 7, 0,
+      '10000000100000000000000000000000000000000000000000');
+
+
+      -- [10] 통장 요구불: 7, 11, 14번 장애
+
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
+
+      VALUES (0, 'S', 10, 0,
+      '00000001000100100000000000000000000000000000000000');
+
+
+      COMMIT;
+    languageId: oracle-sql
+  - kind: 2
+    value: >2
+       SELECT
+        '['||LPAD(med.media_idx, 2, '0')||'] '||
+        RPAD(NVL(nam.NAME_KR, '(미정)'), 20, ' ')||' '||
+        NVL(ths.VAL, RPAD('0', 50, '0')) AS line50
+      FROM
+        (SELECT LEVEL-1 AS media_idx FROM dual CONNECT BY LEVEL<=50) med,
+        (SELECT KEY_IDX1, NAME_KR FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='M') nam,
+        (SELECT KEY_IDX1, VAL FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='S') ths
+      WHERE
+        med.media_idx = nam.KEY_IDX1(+)
+        AND med.media_idx = ths.KEY_IDX1(+)
+      ORDER BY med.media_idx;
+    languageId: oracle-sql

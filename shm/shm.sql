@@ -1,4 +1,4 @@
-/* shm.sql
+/* shm.sql (Refactored: String-based TaskHaltStat)
  * 목적:
  * - main.c의 출력 예시(<<TaskHaltStat 전체값(0/1/X)>>)를
  *   오라클에서 재현하기 위한 DDL/DML/SELECT 예제
@@ -6,34 +6,27 @@
  * 개요:
  * - APC_SHM_ALL 단일 테이블에 3가지 종류의 데이터를 저장한다.
  *   - ROW_KIND='M' : 매체 인덱스(0~49)와 한글명
- *   - ROW_KIND='J' : 업무 인덱스(0~49)와 한글명(본 샘플에서는 미사용)
- *   - ROW_KIND='T' : TaskHaltStat 셀(매체/업무 조합) 값
+ *   - ROW_KIND='S' : TaskHaltStat 50자리 문자열 (매체별 1행)
  */
 
 /* =========================================================
  * DDL: 테이블 생성
  * ========================================================= */
 
--- Optional: drop if exists (ignore error if missing)
 -- DROP TABLE APC_SHM_ALL PURGE;
 
 CREATE TABLE APC_SHM_ALL (
   HOST_ID     NUMBER(2)      DEFAULT 0 NOT NULL,
-  ROW_KIND    CHAR(1)        NOT NULL,          -- 'M'(매체), 'J'(업무), 'T'(TaskHaltStat)
-  KEY_IDX1    NUMBER(2)      NOT NULL,          -- M: media_idx, J: job_idx, T: media_idx
-  KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- M/J: 0 고정, T: job_idx
-  NAME_KR     VARCHAR2(64),                     -- 'M'/'J'에서만 사용(한글명)
-  VAL         CHAR(1),                          -- 'T'에서만 사용(NULL/' '/'0'/'1'/기타)
+  ROW_KIND    CHAR(1)        NOT NULL,          -- 'M'(매체), 'S'(TaskHaltStat String)
+  KEY_IDX1    NUMBER(2)      NOT NULL,          -- M: media_idx, S: media_idx
+  KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- 고정 0
+  NAME_KR     VARCHAR2(64),                     -- 'M'에서만 사용(한글명)
+  VAL         VARCHAR2(50),                     -- 'S'에서 사용(50자리 상태 문자열)
   UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL
-
-
 );
 
 /* =========================================================
  * DML: 초기값 입력(매체명/TaskHaltStat)
- * - 매체명('M'): KEY_IDX1=media_idx, KEY_IDX2=0, NAME_KR=매체명, VAL=NULL
- * - 상태값('T'): KEY_IDX1=media_idx, KEY_IDX2=job_idx, VAL='1'만 저장
- *              (저장되지 않은 셀은 조회 시 0으로 출력)
  * ========================================================= */
 
 -- 1) 매체명(M) 0..49
@@ -92,63 +85,33 @@ FROM (
   SELECT 49, '(미정)' FROM dual
 );
 
--- 2) TaskHaltStat(T): '1'인 셀만 저장
--- [05] IC 자행카드: job 3, 12, 15
-INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, NAME_KR, VAL)
-SELECT 0, 'T', 5, job_idx, NULL, '1'
-FROM (SELECT 3 job_idx FROM dual UNION ALL SELECT 12 FROM dual UNION ALL SELECT 15 FROM dual);
+-- 2) TaskHaltStat(S): 50자리 문자열로 저장
+-- [05] IC 자행카드: 3, 12, 15번 장애
+INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
+VALUES (0, 'S', 5, 0, '00010000000010010000000000000000000000000000000000');
 
--- [07] RF 자행모바일: job 0, 8
-INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, NAME_KR, VAL)
-SELECT 0, 'T', 7, job_idx, NULL, '1'
-FROM (SELECT 0 job_idx FROM dual UNION ALL SELECT 8 FROM dual);
+-- [07] RF 자행모바일: 0, 8번 장애
+INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
+VALUES (0, 'S', 7, 0, '10000000100000000000000000000000000000000000000000');
 
--- [10] 통장 요구불: job 7, 11, 14
-INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, NAME_KR, VAL)
-SELECT 0, 'T', 10, job_idx, NULL, '1'
-FROM (SELECT 7 job_idx FROM dual UNION ALL SELECT 11 FROM dual UNION ALL SELECT 14 FROM dual);
+-- [10] 통장 요구불: 7, 11, 14번 장애
+INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
+VALUES (0, 'S', 10, 0, '00000001000100100000000000000000000000000000000000');
 
 COMMIT;
 
 /* =========================================================
- * SELECT: print_task_halt_stat_all() 형태(50자리 매트릭스) 출력
- *
- * 출력 정규화 규칙(main.c 로직 반영):
- * - VAL이 NULL / ' ' / '0'  -> '0' 출력
- * - VAL이 '1'               -> '1' 출력
- * - 그 외                   -> 'X' 출력
- *
- * 구현 메모:
- * - 0..49 인덱스 생성은 CONNECT BY 사용
- * - 조인은 구식 오라클 조인(+) 문법 사용
+ * SELECT: 리팩토링된 조회 쿼리 (LISTAGG 불필요)
  * ========================================================= */
 SELECT
-  '['||LPAD(out.media_idx,2,'0')||'] '||
-  RPAD(NVL(out.media_name,'(미정)'), 20, ' ')||' '||
-  LISTAGG(out.out_ch,'') WITHIN GROUP (ORDER BY out.job_idx) AS line50
-FROM (
-  SELECT
-    med.media_idx,
-    job.job_idx,
-    nam.NAME_KR AS media_name,
-    CASE
-      WHEN ths.VAL IS NULL OR ths.VAL IN (' ', '0') THEN '0'
-      WHEN ths.VAL = '1' THEN '1'
-      ELSE 'X'
-    END AS out_ch
-  FROM
-    (SELECT LEVEL-1 AS media_idx FROM dual CONNECT BY LEVEL<=50) med,
-    (SELECT LEVEL-1 AS job_idx  FROM dual CONNECT BY LEVEL<=50) job,
-    (SELECT KEY_IDX1 AS media_idx, NAME_KR
-       FROM APC_SHM_ALL
-      WHERE HOST_ID=0 AND ROW_KIND='M' AND KEY_IDX2=0) nam,
-    APC_SHM_ALL ths
-  WHERE
-    nam.media_idx(+) = med.media_idx
-    AND ths.HOST_ID(+)   = 0
-    AND ths.ROW_KIND(+)  = 'T'
-    AND ths.KEY_IDX1(+)  = med.media_idx
-    AND ths.KEY_IDX2(+)  = job.job_idx
-) out
-GROUP BY out.media_idx, out.media_name
-ORDER BY out.media_idx;
+  '['||LPAD(med.media_idx, 2, '0')||'] '||
+  RPAD(NVL(nam.NAME_KR, '(미정)'), 20, ' ')||' '||
+  NVL(ths.VAL, RPAD('0', 50, '0')) AS line50
+FROM
+  (SELECT LEVEL-1 AS media_idx FROM dual CONNECT BY LEVEL<=50) med,
+  (SELECT KEY_IDX1, NAME_KR FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='M') nam,
+  (SELECT KEY_IDX1, VAL FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='S') ths
+WHERE
+  med.media_idx = nam.KEY_IDX1(+)
+  AND med.media_idx = ths.KEY_IDX1(+)
+ORDER BY med.media_idx;
