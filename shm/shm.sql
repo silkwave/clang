@@ -10,29 +10,30 @@
  */
 
 /* =========================================================
- * DDL: 테이블 생성
+ * DDL: 테이블 초기화 및 생성
  * ========================================================= */
 
 -- DROP TABLE APC_SHM_ALL PURGE;
 
 CREATE TABLE APC_SHM_ALL (
-  HOST_ID     NUMBER(2)      DEFAULT 0 NOT NULL,
-  ROW_KIND    CHAR(1)        NOT NULL,          -- 'M'(매체), 'S'(TaskHaltStat String)
-  KEY_IDX1    NUMBER(2)      NOT NULL,          -- M: media_idx, S: media_idx
-  KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- 고정 0
-  NAME_KR     VARCHAR2(64),                     -- 'M'에서만 사용(한글명)
-  VAL         VARCHAR2(50),                     -- 'S'에서 사용(50자리 상태 문자열)
-  UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL
+  HOST_ID     NUMBER(2)      DEFAULT 0 NOT NULL, -- 호스트 ID
+  ROW_KIND    CHAR(1)        NOT NULL,          -- 데이터 종류: 'M'(매체명), 'S'(상태 문자열)
+  KEY_IDX1    NUMBER(2)      NOT NULL,          -- 주요 인덱스 1 (매체 인덱스)
+  KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- 주요 인덱스 2 (고정값 0)
+  NAME_KR     VARCHAR2(64),                     -- 매체 한글명 ('M' 타입에서 사용)
+  VAL         VARCHAR2(50),                     -- 장애 상태 문자열 ('S' 타입에서 사용)
+  UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL -- 수정 일시
 );
 
 /* =========================================================
- * DML: 초기값 입력(매체명/TaskHaltStat)
+ * DML: 초기 매체 데이터 입력 (매체 코드 0~49)
  * ========================================================= */
 
 -- 1) 매체명(M) 0..49
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, NAME_KR, VAL)
 SELECT 0, 'M', media_idx, 0, media_name, NULL
 FROM (
+  -- 각 매체별 인덱스와 명칭 정의
   SELECT  0 media_idx, 'IS03 M/S 신용겸용' media_name FROM dual UNION ALL
   SELECT  1, 'IS03 M/S 중앙카드' FROM dual UNION ALL
   SELECT  2, 'IS03 M/S 조합카드' FROM dual UNION ALL
@@ -85,33 +86,41 @@ FROM (
   SELECT 49, '(미정)' FROM dual
 );
 
--- 2) TaskHaltStat(S): 50자리 문자열로 저장
--- [05] IC 자행카드: 3, 12, 15번 장애
+/* =========================================================
+ * DML: 매체별 업무 장애 상태(TaskHaltStat) 샘플 데이터 입력
+ * ========================================================= */
+
+-- VAL 컬럼의 50자리 문자열은 각 업무별 장애 여부(0:정상, 1:장애)를 나타냄
+
+-- [05] IC 자행카드: 3, 12, 15번 업무 장애 설정
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
 VALUES (0, 'S', 5, 0, '00010000000010010000000000000000000000000000000000');
 
--- [07] RF 자행모바일: 0, 8번 장애
+-- [07] RF 자행모바일: 0, 8번 업무 장애 설정
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
 VALUES (0, 'S', 7, 0, '10000000100000000000000000000000000000000000000000');
 
--- [10] 통장 요구불: 7, 11, 14번 장애
+-- [10] 통장 요구불: 7, 11, 14번 업무 장애 설정
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
 VALUES (0, 'S', 10, 0, '00000001000100100000000000000000000000000000000000');
 
 COMMIT;
 
 /* =========================================================
- * SELECT: 리팩토링된 조회 쿼리 (LISTAGG 불필요)
+ * SELECT: 공유메모리 상태 통합 조회 (main.c 출력 형식 재현)
  * ========================================================= */
 SELECT
-  '['||LPAD(med.media_idx, 2, '0')||'] '||
-  RPAD(NVL(nam.NAME_KR, '(미정)'), 20, ' ')||' '||
-  NVL(ths.VAL, RPAD('0', 50, '0')) AS line50
+  '['||LPAD(med.media_idx, 2, '0')||'] '||                -- 매체 인덱스 (2자리)
+  RPAD(NVL(nam.NAME_KR, '(미정)'), 20, ' ')||' '||        -- 매체명 (20자리 정렬)
+  NVL(ths.VAL, RPAD('0', 50, '0')) AS line50              -- 50자리 장애 상태 문자열
 FROM
+  -- 0부터 49까지의 인덱스 생성
   (SELECT LEVEL-1 AS media_idx FROM dual CONNECT BY LEVEL<=50) med,
+  -- 매체명 정보 조회
   (SELECT KEY_IDX1, NAME_KR FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='M') nam,
+  -- 장애 상태 정보 조회
   (SELECT KEY_IDX1, VAL FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='S') ths
 WHERE
-  med.media_idx = nam.KEY_IDX1(+)
-  AND med.media_idx = ths.KEY_IDX1(+)
-ORDER BY med.media_idx;
+  med.media_idx = nam.KEY_IDX1(+) -- 매체명 Outer Join
+  AND med.media_idx = ths.KEY_IDX1(+) -- 상태값 Outer Join
+ORDER BY med.media_idx; -- 인덱스 순으로 정렬
