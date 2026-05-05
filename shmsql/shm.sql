@@ -1,34 +1,49 @@
-/* shm.sql (Refactored: Normalized TaskHaltStat)
- * 목적:
- * - main.c의 구조(Media, Job, TaskHaltStat[50][50])를 
- *   Oracle DB에서 정규화된 형태로 재현
+/* shm.sql
+ * =========================================================
+ * (Refactored) TaskHaltStat[50][50] 정규화 버전
+ * =========================================================
  *
- * 개요:
- * - ROW_KIND='M' : 매체 마스터 (KEY_IDX1=매체인덱스)
- * - ROW_KIND='J' : 업무 마스터 (KEY_IDX1=업무인덱스)
- * - ROW_KIND='H' : 장애 상태 (KEY_IDX1=매체인덱스, KEY_IDX2=업무인덱스, VAL='1')
+ * 목적
+ * - main.c의 공유메모리 구조(Media[50], Job[50], TaskHaltStat[50][50] 등)를
+ *   Oracle DB에서 "정규화된 행(row) 형태"로 재현합니다.
+ *
+ * 핵심 아이디어
+ * - 원래 구조: TaskHaltStat[media][job] = 0/1 처럼 2차원 배열(가로/세로 매트릭스)
+ * - 정규화 구조: 장애 상태 셀을 (media_idx, job_idx) 한 행으로 저장
+ *
+ * ROW_KIND 정의(단일 테이블에 유형을 구분해 저장)
+ * - 'M' : 매체 마스터 (KEY_IDX1=매체 인덱스, NAME_KR=매체명)
+ * - 'J' : 업무 마스터 (KEY_IDX1=업무 인덱스, NAME_KR=업무명)
+ * - 'H' : 장애 상태  (KEY_IDX1=매체 인덱스, KEY_IDX2=업무 인덱스, VAL='1'이면 장애)
+ * - 'F' : 유량제어    (KEY_IDX1=대상 인덱스, VAL='1'이면 활성)
+ *
+ * 주의
+ * - 이 스크립트는 예제/설명용이며, 제약조건(PK/UK/CK) 및 인덱스는 최소화되어 있습니다.
+ * - 다중 호스트 운용 시 HOST_ID를 조회/조인 조건에 포함하는 방식으로 확장하세요.
  */
 
 /* =========================================================
  * DDL: 테이블 초기화 및 생성
  * ========================================================= */
 
+-- 기존 테이블이 있다면 삭제 후 재생성할 때 사용
 -- DROP TABLE APC_SHM_ALL PURGE;
 
 CREATE TABLE APC_SHM_ALL (
-  HOST_ID     NUMBER(2)      DEFAULT 0 NOT NULL, -- 호스트 ID
-  ROW_KIND    CHAR(1)        NOT NULL,          -- 'M'(매체), 'J'(업무), 'H'(장애상태)
-  KEY_IDX1    NUMBER(2)      NOT NULL,          -- M/J/H: 인덱스 (매체/업무/매체)
-  KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- H: 업무 인덱스 (M/J는 0)
-  NAME_KR     VARCHAR2(64),                     -- M/J: 한글 명칭
-  VAL         VARCHAR2(50),                     -- H: 상태값 ('1':장애)
-  UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL
+  HOST_ID     NUMBER(2)      DEFAULT 0 NOT NULL, -- 호스트 ID(멀티 인스턴스 구분용)
+  ROW_KIND    CHAR(1)        NOT NULL,           -- 행의 종류: 'M','J','H','F'
+  KEY_IDX1    NUMBER(2)      NOT NULL,           -- 인덱스1: M/J=자기 인덱스, H=매체 인덱스, F=대상 인덱스
+  KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL, -- 인덱스2: H에서만 업무 인덱스 사용(M/J/F는 0 권장)
+  NAME_KR     VARCHAR2(64),                      -- M/J에서만 사용: 한글 명칭
+  VAL         VARCHAR2(50),                      -- H/F 등 상태값(예: '1'=장애/활성)
+  UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL -- 갱신 시각(기본값: 현재시각)
 );
 
 /* =========================================================
  * DML: 1) 매체 마스터 데이터 입력 ('M')
  * ========================================================= */
 
+-- 매체 인덱스는 0~49 범위(예시). NAME_KR에 표시용 명칭을 저장합니다.
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, NAME_KR)
 SELECT 0, 'M', idx, name FROM (
   SELECT  0 idx, 'IS03 M/S 신용겸용' name FROM dual UNION ALL
@@ -87,6 +102,7 @@ SELECT 0, 'M', idx, name FROM (
  * DML: 2) 업무 마스터 데이터 입력 ('J')
  * ========================================================= */
 
+-- 업무 인덱스는 0~49 범위(예시). NAME_KR에 표시용 명칭을 저장합니다.
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, NAME_KR)
 SELECT 0, 'J', idx, name FROM (
   SELECT  0 idx, '잔액조회' name FROM dual UNION ALL
@@ -145,6 +161,10 @@ SELECT 0, 'J', idx, name FROM (
  * DML: 3) 장애 상태 데이터 입력 ('H' - Normalized)
  * ========================================================= */
 
+-- 장애 상태는 "장애인 셀만" 행으로 저장합니다(정규화).
+-- 즉 (매체 KEY_IDX1, 업무 KEY_IDX2, VAL='1') 조합이 존재하면 장애로 해석합니다.
+-- 장애가 아닌 셀은 행이 없으므로, 조회 시 LEFT JOIN + NVL로 '0'을 채웁니다.
+
 -- [05] IC 자행카드: 3(현금지급), 12(출금이체), 15(통장정리) 장애
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 5, 3, '1');
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 5, 12, '1');
@@ -159,16 +179,27 @@ INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 10, 11, '1');
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 10, 14, '1');
 
--- 4) 유량제어 데이터 입력 ('F')
--- 2번, 5번 활성
+/* =========================================================
+ * DML: 4) 유량제어 데이터 입력 ('F')
+ * =========================================================
+ *
+ * 의미(예시)
+ * - KEY_IDX1에 대상 인덱스를 넣고, VAL='1'이면 "유량제어 활성"로 간주합니다.
+ * - 실제 의미(대상이 매체인지/업무인지/별도 코드인지)는 운영 규칙에 맞게 확정하세요.
+ */
+
+-- 예시: 2번, 5번 유량제어 활성
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, VAL) VALUES (0, 'F', 2, '1');
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, VAL) VALUES (0, 'F', 5, '1');
 
+-- 여기까지가 샘플 데이터 적재 파트입니다.
 COMMIT;
 
 /* =========================================================
  * SELECT: 유량제어 대상 조회
  * ========================================================= */
+
+-- 활성(VAL='1')인 유량제어 대상을 나열합니다.
 SELECT
   '['||KEY_IDX1||']번 유량제어 활성' AS flow_control_status
 FROM
@@ -181,36 +212,48 @@ ORDER BY KEY_IDX1;
 /* =========================================================
  * SELECT: 매체별 50자리 장애 상태 문자열 조회 (정규화 데이터 -> 가로 출력)
  * ========================================================= */
+
+-- 목적
+-- - TaskHaltStat[media][job] 형태의 0/1 문자열(길이 50)을 매체별로 재구성합니다.
+-- 원리
+-- - pos(0~49)를 생성한 뒤, H(장애) 행과 LEFT JOIN
+-- - 장애 행이 있으면 '1', 없으면 NVL로 '0'
+-- - ORDER BY pos.lvl 순서대로 LISTAGG로 이어 붙여 50자리 문자열 생성
 SELECT
-  '['||LPAD(m.KEY_IDX1, 2, '0')||'] '||
-  RPAD(m.NAME_KR, 20, ' ')||' '||
+  '['||LPAD(med.KEY_IDX1, 2, '0')||'] '||
+  RPAD(med.NAME_KR, 20, ' ')||' '||
   (
-    SELECT LISTAGG(NVL(h.VAL, '0'), '') WITHIN GROUP (ORDER BY pos.lvl)
+    SELECT LISTAGG(NVL(hlt.VAL, '0'), '') WITHIN GROUP (ORDER BY pos.lvl)
     FROM (SELECT LEVEL - 1 AS lvl FROM DUAL CONNECT BY LEVEL <= 50) pos
-    LEFT JOIN APC_SHM_ALL h ON h.ROW_KIND = 'H' 
-                           AND h.KEY_IDX1 = m.KEY_IDX1 
-                           AND h.KEY_IDX2 = pos.lvl
+    LEFT JOIN APC_SHM_ALL hlt ON hlt.ROW_KIND = 'H'
+                             AND hlt.KEY_IDX1 = med.KEY_IDX1
+                             AND hlt.KEY_IDX2 = pos.lvl
   ) AS line50
 FROM
-  APC_SHM_ALL m
+  APC_SHM_ALL med
 WHERE
-  m.ROW_KIND = 'M'
-ORDER BY m.KEY_IDX1;
+  med.ROW_KIND = 'M'
+ORDER BY med.KEY_IDX1;
 
 /* =========================================================
  * SELECT: 인간이 읽기 좋은 장애 요약 조회 (명칭 기반)
  * ========================================================= */
+
+-- 목적
+-- - 장애 셀(H)을 사람이 읽기 쉬운 "매체명 + 업무명" 형태로 요약 출력합니다.
+-- 주의
+-- - 현재는 HOST_ID를 조건에 포함하지 않습니다(단일 호스트 가정).
 SELECT
-  '['||LPAD(m.KEY_IDX1, 2, '0')||':'||RPAD(m.NAME_KR, 20, ' ')||'] '||
-  '<'||LPAD(j.KEY_IDX1, 2, '0')||':'||RPAD(j.NAME_KR, 20, ' ')||'>' AS halt_summary
+  '['||LPAD(med.KEY_IDX1, 2, '0')||':'||RPAD(med.NAME_KR, 20, ' ')||'] '||
+  '<'||LPAD(job.KEY_IDX1, 2, '0')||':'||RPAD(job.NAME_KR, 20, ' ')||'>' AS halt_summary
 FROM
-  APC_SHM_ALL m, -- 매체 마스터
-  APC_SHM_ALL j, -- 업무 마스터
-  APC_SHM_ALL h  -- 장애 상태
+  APC_SHM_ALL med, -- 매체 마스터
+  APC_SHM_ALL job, -- 업무 마스터
+  APC_SHM_ALL hlt  -- 장애 상태
 WHERE
-  m.ROW_KIND = 'M'
-  AND j.ROW_KIND = 'J'
-  AND h.ROW_KIND = 'H'
-  AND m.KEY_IDX1 = h.KEY_IDX1
-  AND j.KEY_IDX1 = h.KEY_IDX2
-ORDER BY m.KEY_IDX1, j.KEY_IDX1;
+  med.ROW_KIND = 'M'
+  AND job.ROW_KIND = 'J'
+  AND hlt.ROW_KIND = 'H'
+  AND med.KEY_IDX1 = hlt.KEY_IDX1
+  AND job.KEY_IDX1 = hlt.KEY_IDX2
+ORDER BY med.KEY_IDX1, job.KEY_IDX1;

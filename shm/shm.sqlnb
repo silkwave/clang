@@ -1,33 +1,31 @@
 cells:
+  - kind: 1
+    value: >
+      # 공유메모리(SHM) 시뮬레이션 데이터베이스 가이드
+
+      이 노트북은 `main.c` 프로그램의 공유메모리 구조를 Oracle DB에서 재현하기 위한 스크립트를 포함합니다.
+    languageId: markdown
   - kind: 2
     value: >
-      -- 테이블 초기화 및 생성
-
-      DROP TABLE APC_SHM_ALL;
-
+      /* [1단계] 테이블 초기화 및 생성 */
+      DROP TABLE APC_SHM_ALL PURGE;
 
       CREATE TABLE APC_SHM_ALL (
         HOST_ID     NUMBER(2)      DEFAULT 0 NOT NULL, -- 호스트 ID
-        ROW_KIND    CHAR(1)        NOT NULL,          -- 데이터 종류: 'M'(매체명), 'S'(상태 문자열)
-        KEY_IDX1    NUMBER(2)      NOT NULL,          -- 주요 인덱스 1 (매체 인덱스)
-        KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- 주요 인덱스 2 (고정값 0)
-        NAME_KR     VARCHAR2(64),                     -- 매체 한글명 ('M' 타입에서 사용)
-        VAL         VARCHAR2(50),                     -- 장애 상태 문자열 ('S' 타입에서 사용)
-        UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL -- 수정 일시
+        ROW_KIND    CHAR(1)        NOT NULL,          -- 'M'(매체), 'J'(업무), 'H'(장애상태), 'F'(유량제어)
+        KEY_IDX1    NUMBER(2)      NOT NULL,          -- M/J/H/F: 인덱스
+        KEY_IDX2    NUMBER(2)      DEFAULT 0 NOT NULL,-- H: 업무 인덱스 (나머지는 0)
+        NAME_KR     VARCHAR2(64),                     -- M/J: 한글 명칭
+        VAL         VARCHAR2(50),                     -- H/F: 상태값 ('1':장애/활성)
+        UPDATED_AT  DATE           DEFAULT SYSDATE NOT NULL
       );
     languageId: oracle-sql
   - kind: 2
     value: >
-      -- 초기 매체 데이터 입력 (매체 코드 0~49)
-
-      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, NAME_KR,
-      VAL)
-
-      SELECT 0, 'M', media_idx, 0, media_name, NULL
-
-      FROM (
-        -- 각 매체별 인덱스와 명칭 정의
-        SELECT  0 media_idx, 'IS03 M/S 신용겸용' media_name FROM dual UNION ALL
+      /* [2단계] 매체 마스터 데이터 입력 ('M') */
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, NAME_KR)
+      SELECT 0, 'M', idx, name FROM (
+        SELECT  0 idx, 'IS03 M/S 신용겸용' name FROM dual UNION ALL
         SELECT  1, 'IS03 M/S 중앙카드' FROM dual UNION ALL
         SELECT  2, 'IS03 M/S 조합카드' FROM dual UNION ALL
         SELECT  3, 'IS03 M/S 가상계좌' FROM dual UNION ALL
@@ -81,54 +79,128 @@ cells:
     languageId: oracle-sql
   - kind: 2
     value: >
-      -- 매체별 업무 장애 상태(TaskHaltStat) 샘플 데이터 입력
+      /* [3단계] 업무 마스터 데이터 입력 ('J') */
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, NAME_KR)
+      SELECT 0, 'J', idx, name FROM (
+        SELECT  0 idx, '잔액조회' name FROM dual UNION ALL
+        SELECT  1, '내역조회' FROM dual UNION ALL
+        SELECT  2, '대금조회' FROM dual UNION ALL
+        SELECT  3, '현금지급' FROM dual UNION ALL
+        SELECT  4, '수표지급' FROM dual UNION ALL
+        SELECT  5, '현금입금' FROM dual UNION ALL
+        SELECT  6, '수표입금' FROM dual UNION ALL
+        SELECT  7, 'CMS집금' FROM dual UNION ALL
+        SELECT  8, '계좌이체' FROM dual UNION ALL
+        SELECT  9, 'CMS이체' FROM dual UNION ALL
+        SELECT 10, '카드론이체' FROM dual UNION ALL
+        SELECT 11, '입금이체' FROM dual UNION ALL
+        SELECT 12, '출금이체' FROM dual UNION ALL
+        SELECT 13, '동행이체' FROM dual UNION ALL
+        SELECT 14, '삼행이체' FROM dual UNION ALL
+        SELECT 15, '통장정리' FROM dual UNION ALL
+        SELECT 16, '아파트관리비' FROM dual UNION ALL
+        SELECT 17, '공과금수납' FROM dual UNION ALL
+        SELECT 18, '사고신고' FROM dual UNION ALL
+        SELECT 19, '비밀번호변경' FROM dual UNION ALL
+        SELECT 20, '전자화폐충전환불' FROM dual UNION ALL
+        SELECT 21, '신용선결제' FROM dual UNION ALL
+        SELECT 22, '신용청구대금결제' FROM dual UNION ALL
+        SELECT 23, '대학등록금' FROM dual UNION ALL
+        SELECT 24, '공제납부' FROM dual UNION ALL
+        SELECT 25, '여신상환' FROM dual UNION ALL
+        SELECT 26, '지방세' FROM dual UNION ALL
+        SELECT 27, '전자납부' FROM dual UNION ALL
+        SELECT 28, '2D바코드' FROM dual UNION ALL
+        SELECT 29, '(미정)' FROM dual UNION ALL
+        SELECT 30, '(미정)' FROM dual UNION ALL
+        SELECT 31, '(미정)' FROM dual UNION ALL
+        SELECT 32, '(미정)' FROM dual UNION ALL
+        SELECT 33, '(미정)' FROM dual UNION ALL
+        SELECT 34, '(미정)' FROM dual UNION ALL
+        SELECT 35, '(미정)' FROM dual UNION ALL
+        SELECT 36, '(미정)' FROM dual UNION ALL
+        SELECT 37, '(미정)' FROM dual UNION ALL
+        SELECT 38, '(미정)' FROM dual UNION ALL
+        SELECT 39, '(미정)' FROM dual UNION ALL
+        SELECT 40, '(미정)' FROM dual UNION ALL
+        SELECT 41, '(미정)' FROM dual UNION ALL
+        SELECT 42, '(미정)' FROM dual UNION ALL
+        SELECT 43, '(미정)' FROM dual UNION ALL
+        SELECT 44, '(미정)' FROM dual UNION ALL
+        SELECT 45, '(미정)' FROM dual UNION ALL
+        SELECT 46, '(미정)' FROM dual UNION ALL
+        SELECT 47, '(미정)' FROM dual UNION ALL
+        SELECT 48, '(미정)' FROM dual UNION ALL
+        SELECT 49, '(미정)' FROM dual
+      );
+    languageId: oracle-sql
+  - kind: 2
+    value: >
+      /* [4단계] 장애 상태 및 유량 제어 데이터 입력 ('H', 'F') */
+      -- 매체별 업무 장애 상태 ('H')
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 5, 3, '1');
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 5, 12, '1');
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 5, 15, '1');
 
-      -- VAL 컬럼의 50자리 문자열은 각 업무별 장애 여부(0:정상, 1:장애)를 나타냄
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 7, 0, '1');
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 7, 8, '1');
 
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 10, 7, '1');
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 10, 11, '1');
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 10, 14, '1');
 
-      -- [05] IC 자행카드: 3, 12, 15번 업무 장애 설정
-
-      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
-
-      VALUES (0, 'S', 5, 0,
-      '00010000000010010000000000000000000000000000000000');
-
-
-      -- [07] RF 자행모바일: 0, 8번 업무 장애 설정
-
-      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
-
-      VALUES (0, 'S', 7, 0,
-      '10000000100000000000000000000000000000000000000000');
-
-
-      -- [10] 통장 요구불: 7, 11, 14번 업무 장애 설정
-
-      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL)
-
-      VALUES (0, 'S', 10, 0,
-      '00000001000100100000000000000000000000000000000000');
-
+      -- 유량 제어 상태 ('F')
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, VAL) VALUES (0, 'F', 2, '1');
+      INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, VAL) VALUES (0, 'F', 5, '1');
 
       COMMIT;
     languageId: oracle-sql
   - kind: 2
-    value: >2
-       -- 공유메모리 상태 통합 조회 (main.c의 출력 형식을 오라클에서 재현)
-
-       SELECT
-        '['||LPAD(med.media_idx, 2, '0')||'] '||                -- 매체 인덱스 (2자리)
-        RPAD(NVL(nam.NAME_KR, '(미정)'), 20, ' ')||' '||        -- 매체명 (20자리 정렬)
-        NVL(ths.VAL, RPAD('0', 50, '0')) AS line50              -- 50자리 장애 상태 문자열
+    value: >
+      /* [5단계] 유량 제어 대상 조회 */
+      SELECT
+        '['||KEY_IDX1||']번 유량제어 활성' AS flow_control_status
       FROM
-        -- 0부터 49까지의 인덱스 생성
-        (SELECT LEVEL-1 AS media_idx FROM dual CONNECT BY LEVEL<=50) med,
-        -- 매체명 정보 조회
-        (SELECT KEY_IDX1, NAME_KR FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='M') nam,
-        -- 장애 상태 정보 조회
-        (SELECT KEY_IDX1, VAL FROM APC_SHM_ALL WHERE HOST_ID=0 AND ROW_KIND='S') ths
+        APC_SHM_ALL
       WHERE
-        med.media_idx = nam.KEY_IDX1(+) -- 매체명 Outer Join
-        AND med.media_idx = ths.KEY_IDX1(+) -- 상태값 Outer Join
-      ORDER BY med.media_idx; -- 인덱스 순으로 정렬
+        ROW_KIND = 'F'
+        AND VAL = '1'
+      ORDER BY KEY_IDX1;
+    languageId: oracle-sql
+  - kind: 2
+    value: >
+      /* [6단계] 50자리 장애 상태 문자열 조회 (가로 출력) */
+      SELECT
+        '['||LPAD(m.KEY_IDX1, 2, '0')||'] '||
+        RPAD(m.NAME_KR, 20, ' ')||' '||
+        (
+          SELECT LISTAGG(NVL(h.VAL, '0'), '') WITHIN GROUP (ORDER BY pos.lvl)
+          FROM (SELECT LEVEL - 1 AS lvl FROM DUAL CONNECT BY LEVEL <= 50) pos
+          LEFT JOIN APC_SHM_ALL h ON h.ROW_KIND = 'H' 
+                                 AND h.KEY_IDX1 = m.KEY_IDX1 
+                                 AND h.KEY_IDX2 = pos.lvl
+        ) AS line50
+      FROM
+        APC_SHM_ALL m
+      WHERE
+        m.ROW_KIND = 'M'
+      ORDER BY m.KEY_IDX1;
+    languageId: oracle-sql
+  - kind: 2
+    value: >
+      /* [7단계] 인간이 읽기 좋은 장애 요약 조회 (명칭 기반) */
+      SELECT
+        '['||LPAD(m.KEY_IDX1, 2, '0')||':'||RPAD(m.NAME_KR, 20, ' ')||'] '||
+        '<'||LPAD(j.KEY_IDX1, 2, '0')||':'||RPAD(j.NAME_KR, 20, ' ')||'>' AS halt_summary
+      FROM
+        APC_SHM_ALL m, -- 매체 마스터
+        APC_SHM_ALL j, -- 업무 마스터
+        APC_SHM_ALL h  -- 장애 상태
+      WHERE
+        m.ROW_KIND = 'M'
+        AND j.ROW_KIND = 'J'
+        AND h.ROW_KIND = 'H'
+        AND m.KEY_IDX1 = h.KEY_IDX1
+        AND j.KEY_IDX1 = h.KEY_IDX2
+      ORDER BY m.KEY_IDX1, j.KEY_IDX1;
     languageId: oracle-sql
