@@ -163,7 +163,7 @@ SELECT 0, 'J', idx, name FROM (
 
 -- 장애 상태는 "장애인 셀만" 행으로 저장합니다(정규화).
 -- 즉 (매체 KEY_IDX1, 업무 KEY_IDX2, VAL='1') 조합이 존재하면 장애로 해석합니다.
--- 장애가 아닌 셀은 행이 없으므로, 조회 시 LEFT JOIN + NVL로 '0'을 채웁니다.
+-- 장애가 아닌 셀은 행이 없으므로, 조회 시 구식 외부조인(+) + NVL로 '0'을 채웁니다.
 
 -- [05] IC 자행카드: 3(현금지급), 12(출금이체), 15(통장정리) 장애
 INSERT INTO APC_SHM_ALL (HOST_ID, ROW_KIND, KEY_IDX1, KEY_IDX2, VAL) VALUES (0, 'H', 5, 3, '1');
@@ -216,7 +216,7 @@ ORDER BY KEY_IDX1;
 -- 목적
 -- - TaskHaltStat[media][job] 형태의 0/1 문자열(길이 50)을 매체별로 재구성합니다.
 -- 원리
--- - pos(0~49)를 생성한 뒤, H(장애) 행과 LEFT JOIN
+-- - pos(0~49)를 생성한 뒤, H(장애) 행과 구식 외부조인(+)
 -- - 장애 행이 있으면 '1', 없으면 NVL로 '0'
 -- - ORDER BY pos.lvl 순서대로 LISTAGG로 이어 붙여 50자리 문자열 생성
 SELECT
@@ -224,10 +224,13 @@ SELECT
   RPAD(med.NAME_KR, 20, ' ')||' '||
   (
     SELECT LISTAGG(NVL(hlt.VAL, '0'), '') WITHIN GROUP (ORDER BY pos.lvl)
-    FROM (SELECT LEVEL - 1 AS lvl FROM DUAL CONNECT BY LEVEL <= 50) pos
-    LEFT JOIN APC_SHM_ALL hlt ON hlt.ROW_KIND = 'H'
-                             AND hlt.KEY_IDX1 = med.KEY_IDX1
-                             AND hlt.KEY_IDX2 = pos.lvl
+    FROM
+      (SELECT LEVEL - 1 AS lvl FROM DUAL CONNECT BY LEVEL <= 50) pos,
+      APC_SHM_ALL hlt
+    WHERE
+      hlt.ROW_KIND(+) = 'H'
+      AND hlt.KEY_IDX1(+) = med.KEY_IDX1
+      AND hlt.KEY_IDX2(+) = pos.lvl
   ) AS line50
 FROM
   APC_SHM_ALL med
