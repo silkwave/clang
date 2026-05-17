@@ -26,6 +26,16 @@
 /* 한 줄 고정 폭 */
 #define LINE_SIZE 120
 
+/*
+ * 레거시 통장 출력 버퍼 형태
+ * - 각 라인은 120바이트 "고정 폭"이며 널 종료가 없다.
+ * - 최대 76라인(예시)
+ */
+typedef struct
+{
+    char BnbkData[76][LINE_SIZE];
+} PRT_BNBK_MSG;
+
 /* 금액 포맷 임시 버퍼 크기 */
 #define MAX_AMOUNT_LEN 64
 
@@ -257,6 +267,16 @@ static void line_init(char buffer[LINE_SIZE + 1])
     buffer[LINE_SIZE] = '\0';
 }
 
+static void bnbk_msg_init(PRT_BNBK_MSG *msg)
+{
+    if (msg == NULL)
+    {
+        return;
+    }
+    /* 레거시 버퍼는 라인마다 널 종료가 없으므로 전체를 공백으로 초기화 */
+    memset(msg->BnbkData, ' ', sizeof(msg->BnbkData));
+}
+
 /*
  * append_char_field
  * - 글자 필드를 field_len 폭만큼 "좌측 정렬"로 추가한다.
@@ -368,6 +388,27 @@ static int append_amount_field(char buffer[LINE_SIZE + 1], int offset, const cha
 }
 
 /*
+ * append_bytes
+ * - 레거시의 memcpy(plc_Char, ..., n); plc_Char += n; 을
+ *   "offset 증가" 방식으로 표현한다.
+ */
+static int append_bytes(char buffer[LINE_SIZE + 1], int offset, const unsigned char bytes[], int byte_len)
+{
+    if (buffer == NULL || bytes == NULL || offset >= LINE_SIZE || byte_len <= 0)
+    {
+        return offset;
+    }
+
+    int remain = LINE_SIZE - offset;
+    int write_len = (byte_len < remain) ? byte_len : remain;
+    for (int i = 0; i < write_len; i++)
+    {
+        buffer[offset + i] = (char)bytes[i];
+    }
+    return offset + write_len;
+}
+
+/*
  * 통장 한 줄 생성
  * - outLine은 LINE_SIZE + 1 크기의 버퍼(배열)여야 한다.
  */
@@ -376,6 +417,13 @@ static void make_bankbook_line(BankbookRecord record, char outLine[LINE_SIZE + 1
     char line[LINE_SIZE + 1];
     line_init(line);
     int offset = 0;
+
+    /* 레거시 예시:
+     * memcpy(plc_Char, "\xff\x00\x01\x00", 4);
+     * plc_Char += 4;
+     */
+    static const unsigned char ctrl_prefix[] = {0xff, 0x00, 0x01, 0x00};
+    offset = append_bytes(line, offset, ctrl_prefix, (int)sizeof(ctrl_prefix));
 
     /* 레이아웃(필드 폭): 날짜(10) + 내용(20) + 출금(15) + 입금(15) + 잔액(20) */
     offset = append_char_field(line, offset, record.trDt, 10);
@@ -427,12 +475,11 @@ int main(void)
     strcpy(records[2].balance, "12330864.31");
 
     /*
-     * line[20][120] 형태로 여러 줄을 담을 수 있게 확장
-     * - 20: 최대 라인 개수(예시)
-     * - LINE_SIZE + 1: 120바이트 + 널 종료
+     * 레거시 PRT_BNBK_MSG 형태로 여러 줄을 담는다.
+     * - msg.BnbkData[i]는 "i번째 라인(120바이트)" 버퍼
      */
-    char lines[20][LINE_SIZE + 1];
-    memset(lines, 0x00, sizeof(lines));
+    PRT_BNBK_MSG msg;
+    bnbk_msg_init(&msg);
 
     int record_count = (int)(sizeof(records) / sizeof(records[0]));
     for (int i = 0; i < record_count; i++)
@@ -446,21 +493,34 @@ int main(void)
          *   plc_Char = ps_prt_bnbk_msg->BnbkData[i];
          *
          * 현재:
-         *   lines[i] 가 "i번째 라인 버퍼의 시작 주소" 역할을 한다.
-         *   그리고 make_bankbook_line(&records[i], lines[i]) 호출이
-         *   곧 "i번째 라인에 내용을 채워라"라는 의미가 된다.
+         *   msg.BnbkData[i]가 "i번째 라인(120바이트)" 버퍼의 시작 주소 역할을 한다.
          */
         /* 필요하면 개별 record 내용을 먼저 확인 */
         print_record(records[i]);
 
-        make_bankbook_line(records[i], lines[i]);
-        rtrim(lines[i]);
+        char line[LINE_SIZE + 1];
+        make_bankbook_line(records[i], line);
+        memcpy(msg.BnbkData[i], line, LINE_SIZE);
     }
 
     printf("=================================================\n");
     for (int i = 0; i < record_count; i++)
     {
-        printf("%s\n", lines[i]);
+        /* 레거시 라인은 널 종료가 없으므로, 출력용으로만 문자열 버퍼를 만든다. */
+        char printable[LINE_SIZE + 1];
+        memcpy(printable, msg.BnbkData[i], LINE_SIZE);
+        printable[LINE_SIZE] = '\0';
+        /* 제어문자(0x00 등)로 콘솔 출력이 깨질 수 있어, 화면용으로 치환 */
+        for (int k = 0; k < LINE_SIZE; k++)
+        {
+            unsigned char c = (unsigned char)printable[k];
+            if (c == 0x00 || c == 0xff)
+            {
+                printable[k] = '.';
+            }
+        }
+        rtrim(printable);
+        printf("%s\n", printable);
     }
     printf("=================================================\n");
 
