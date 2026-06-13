@@ -60,11 +60,11 @@ int main(void)
 {
     run_all_tests(); // 모든 테스트를 실행합니다.
 
-    printf("\n--- run_all_tests ---end \n");
+    printf("\n--- End of run_all_tests (Program will exit soon) ---\n");
 
-    const char *ms949_text = "안녕하세요 Hello World!"; // MS949 인코딩 가정
-
-    char *m2 = substr(ms949_text, 1, 5, ENCODING_MS949);
+    // 마지막으로 리소스를 하나 더 생성하여 atexit이 정상 작동하는지 확인합니다.
+    const char *ms949_text = "마지막 테스트";
+    substr(ms949_text, 1, 3, ENCODING_MS949);
 
     return 0;
 }

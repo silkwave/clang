@@ -12,7 +12,7 @@
 
 #include <stddef.h>
 
-void register_resource(void* ptr);
+int register_resource(void* ptr);
 void unregister_resource(void* ptr);
 void* realloc_resource(void* old_ptr, size_t new_size);
 void cleanup_resources(void);

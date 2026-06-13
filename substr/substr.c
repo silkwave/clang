@@ -22,27 +22,44 @@
  */
 static int char_len(const char *p, encoding_t enc)
 {
+    if (!p || *p == '\0')
+        return 0;
+
     unsigned char c = (unsigned char)*p;
     if (enc == ENCODING_UTF8)
     {
         if (c < 0x80) // 0xxxxxxx
             return 1;
-        // 110xxxxx 10xxxxxx
-        else if ((c & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80)
-            return 2;
-        // 1110xxxx 10xxxxxx 10xxxxxx
-        else if ((c & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80)
-            return 3;
-        // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-        else if ((c & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 && (p[3] & 0xC0) == 0x80)
-            return 4;
 
-        // 잘못된 바이트 시퀀스일 경우 1바이트 전진
+        // 110xxxxx 10xxxxxx
+        if ((c & 0xE0) == 0xC0)
+        {
+            if (p[1] != '\0' && (p[1] & 0xC0) == 0x80)
+                return 2;
+        }
+        // 1110xxxx 10xxxxxx 10xxxxxx
+        else if ((c & 0xF0) == 0xE0)
+        {
+            if (p[1] != '\0' && (p[1] & 0xC0) == 0x80 &&
+                p[2] != '\0' && (p[2] & 0xC0) == 0x80)
+                return 3;
+        }
+        // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+        else if ((c & 0xF8) == 0xF0)
+        {
+            if (p[1] != '\0' && (p[1] & 0xC0) == 0x80 &&
+                p[2] != '\0' && (p[2] & 0xC0) == 0x80 &&
+                p[3] != '\0' && (p[3] & 0xC0) == 0x80)
+                return 4;
+        }
+
+        // 잘못된 바이트 시퀀스이거나 데이터가 부족할 경우 1바이트만 전진
         return 1;
     }
     else
     { // MS949
-        return (c < 0x80) ? 1 : 2;
+        // ASCII는 1바이트, 그 외는 2바이트로 간주하되 다음 바이트가 존재할 때만 2 반환
+        return (c < 0x80 || p[1] == '\0') ? 1 : 2;
     }
 }
 
@@ -123,7 +140,11 @@ char *substr(const char *str, int start, int length, encoding_t enc)
     result[byte_len] = '\0';             // 문자열의 끝에 널 종료 문자 추가
 
     /* 할당된 문자열을 리소스 매니저에 등록하여 프로그램 종료 시 자동 해제 */
-    register_resource(result);
+    if (!register_resource(result))
+    {
+        free(result);
+        return NULL;
+    }
 
     return result;
 }

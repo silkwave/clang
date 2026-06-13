@@ -36,17 +36,17 @@ static void cleanup_all(void)
     fprintf(stderr, "[ResourceManager] 스레드 리소스 해제 완료\n");
 }
 
-void register_resource(void *ptr)
+int register_resource(void *ptr)
 {
     if (!ptr)
-        return;
+        return 0;
 
-    /*
-     * atexit(cleanup_all): 프로그램이 정상 종료될 때 cleanup_all 함수를 호출하도록 등록합니다.
-     * 이 핸들러는 주(main) 스레드의 리소스만 정리할 수 있습니다.
-     * (atexit은 동일 함수가 여러 번 등록되어도 실제로는 한 번만 등록됩니다.)
-     */
-    atexit(cleanup_all);
+    static int atexit_registered = 0;
+    if (!atexit_registered)
+    {
+        atexit(cleanup_all);
+        atexit_registered = 1;
+    }
 
     if (resource_count_ >= resource_capacity_)
     {
@@ -55,15 +55,15 @@ void register_resource(void *ptr)
         void **new_resources = realloc(resources, new_capacity * sizeof(void *));
         if (!new_resources)
         {
-            fprintf(stderr, "[ResourceManager] 리소스 배열 확장 실패. 메모리 누수 발생 가능.\n");
-            free(ptr); // 등록 실패 시 할당된 메모리 해제
-            return;
+            fprintf(stderr, "[ResourceManager] 리소스 배열 확장 실패.\n");
+            return 0;
         }
         resources = new_resources;
         resource_capacity_ = new_capacity;
     }
     resources[resource_count_++] = ptr;
     fprintf(stderr, "[ResourceManager] 리소스 등록: %p (현재 %d개)\n", ptr, resource_count_);
+    return 1;
 }
 
 /* 등록된 포인터를 찾아 free하고 목록에서 제거합니다. */
@@ -113,15 +113,16 @@ void *realloc_resource(void *old_ptr, size_t new_size)
 
     if (found_idx != -1)
     {
+        fprintf(stderr, "[ResourceManager] 리소스 재할당 시도: %p (새 크기: %zu)\n", old_ptr, new_size);
         void *new_ptr = realloc(old_ptr, new_size);
         if (new_ptr)
         {
             resources[found_idx] = new_ptr;
-            fprintf(stderr, "[ResourceManager] 리소스 재할당 성공: %p -> %p (새 크기: %zu)\n", old_ptr, new_ptr, new_size);
+            fprintf(stderr, "[ResourceManager] 리소스 재할당 성공: -> %p\n", new_ptr);
         }
         else
         {
-            fprintf(stderr, "[ResourceManager] 리소스 재할당 실패: %p (크기: %zu)\n", old_ptr, new_size);
+            fprintf(stderr, "[ResourceManager] 리소스 재할당 실패: %p\n", old_ptr);
         }
         return new_ptr;
     }
