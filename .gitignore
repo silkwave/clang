@@ -1,32 +1,28 @@
-# Prerequisites
-*.d
-
-# Object files
+# Object files / dependencies
 *.o
-*.ko
 *.obj
-*.elf
+*.d
+*.ko
+
+# Static / shared libraries
+*.a
+*.la
+*.lo
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
 
 # Linker output
+*.elf
 *.ilk
 *.map
 *.exp
 
-# Precompiled Headers
+# Precompiled headers
 *.gch
 *.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
 
 # Executables
 *.exe
@@ -36,16 +32,17 @@ i86pc
 amd64
 sparc
 
-# Project specific executables
-test_ase256
-bbnk
-contains
-example
-main
-trim_test
-app
-test
-substr_test.exe
+# Project executables
+ase256/test_ase256
+base26/base26
+bnbk/bbnk
+contains/contains
+han/example
+memtrc/app
+memtrc/test
+shm/main
+substr/substr_test.exe
+util/trim_test
 
 # Build directories
 build/
