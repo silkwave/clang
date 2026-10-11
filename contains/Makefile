@@ -1,4 +1,4 @@
-CC = clang
+CC = gcc
 CFLAGS = -Wall -g
 TARGET = contains
 SRCS = contains.c
